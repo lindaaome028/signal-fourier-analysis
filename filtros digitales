@@ -1,0 +1,230 @@
+"""
+IMPLEMENTACIÓN Y EVALUACIÓN DE FILTROS DIGITALES
+Autor: [Tu nombre]
+Descripción: Diseño y aplicación de filtros pasa bajos, pasa altos y pasa bandas
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import signal
+from scipy.fft import fft, fftfreq
+
+# ============================================
+# 1. CONFIGURACIÓN INICIAL
+# ============================================
+fs = 1000  # Frecuencia de muestreo (Hz)
+t = np.arange(0, 1, 1/fs)  # Vector de tiempo (1 segundo)
+
+# ============================================
+# 2. CREACIÓN DE SEÑALES DE PRUEBA
+# ============================================
+# Señal compuesta: 50 Hz + 150 Hz + 300 Hz
+f1, f2, f3 = 50, 150, 300  # Frecuencias en Hz
+senal_limpia = (np.sin(2*np.pi*f1*t) + 
+                0.5*np.sin(2*np.pi*f2*t) + 
+                0.3*np.sin(2*np.pi*f3*t))
+
+# Añadir ruido blanco
+ruido = 0.5 * np.random.randn(len(t))
+senal_ruidosa = senal_limpia + ruido
+
+# ============================================
+# 3. DISEÑO DE FILTROS
+# ============================================
+def diseñar_filtros():
+    """Diseña diferentes tipos de filtros digitales"""
+    
+    filtros = {}
+    
+    # FILTRO PASA BAJOS (Butterworth)
+    # Deja pasar frecuencias bajas (< 100 Hz), atenúa las altas
+    orden = 4
+    frecuencia_corte = 100  # Hz
+    nyquist = fs/2
+    normal_corte = frecuencia_corte / nyquist
+    
+    b_pb, a_pb = signal.butter(orden, normal_corte, btype='low')
+    filtros['Pasa Bajos'] = {'b': b_pb, 'a': a_pb, 'tipo': 'IIR Butterworth'}
+    
+    # FILTRO PASA ALTOS (Chebyshev)
+    # Deja pasar frecuencias altas (> 200 Hz), atenúa las bajas
+    frecuencia_corte_pa = 200  # Hz
+    normal_corte_pa = frecuencia_corte_pa / nyquist
+    ripple = 0.1  # Ripple en dB
+    
+    b_pa, a_pa = signal.cheby1(orden, ripple, normal_corte_pa, btype='high')
+    filtros['Pasa Altos'] = {'b': b_pa, 'a': a_pa, 'tipo': 'IIR Chebyshev'}
+    
+    # FILTRO PASA BANDA (FIR con ventana)
+    # Deja pasar un rango de frecuencias (120-180 Hz)
+    frecuencias = [120, 180]  # Hz
+    normal_frecs = [f/nyquist for f in frecuencias]
+    
+    num_taps = 101  # Número de coeficientes del filtro FIR
+    b_pbnda = signal.firwin(num_taps, normal_frecs, pass_zero='bandpass')
+    a_pbnda = [1]  # Para filtros FIR, a = [1]
+    
+    filtros['Pasa Banda'] = {'b': b_pbnda, 'a': a_pbnda, 'tipo': 'FIR Ventana'}
+    
+    return filtros
+
+# ============================================
+# 4. APLICACIÓN DE FILTROS
+# ============================================
+def aplicar_filtros(senal, filtros):
+    """Aplica todos los filtros a la señal"""
+    
+    resultados = {}
+    
+    for nombre, filtro in filtros.items():
+        # Aplicar filtro
+        senal_filtrada = signal.filtfilt(filtro['b'], filtro['a'], senal)
+        resultados[nombre] = senal_filtrada
+    
+    return resultados
+
+# ============================================
+# 5. ANÁLISIS EN FRECUENCIA
+# ============================================
+def analizar_frecuencia(senal, fs, titulo):
+    """Calcula y retorna la FFT de la señal"""
+    N = len(senal)
+    fft_senal = fft(senal)
+    fft_magnitud = np.abs(fft_senal[:N//2]) * 2/N
+    frecuencias = fftfreq(N, 1/fs)[:N//2]
+    
+    return frecuencias, fft_magnitud
+
+# ============================================
+# 6. VISUALIZACIÓN DE RESULTADOS
+# ============================================
+def visualizar_resultados(t, senal_original, senal_ruidosa, resultados, filtros, fs):
+    """Crea gráficas completas del análisis"""
+    
+    fig, axes = plt.subplots(3, 3, figsize=(15, 12))
+    fig.suptitle('Análisis de Filtros Digitales', fontsize=16)
+    
+    # Gráfica 1: Señal original vs ruidosa (tiempo)
+    axes[0, 0].plot(t[:200], senal_original[:200], 'b-', label='Original', alpha=0.7)
+    axes[0, 0].plot(t[:200], senal_ruidosa[:200], 'r-', label='Con ruido', alpha=0.5)
+    axes[0, 0].set_title('Señal en el tiempo (primeros 200 ms)')
+    axes[0, 0].set_xlabel('Tiempo (s)')
+    axes[0, 0].set_ylabel('Amplitud')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+    
+    # Análisis en frecuencia de señal original y ruidosa
+    f_orig, mag_orig = analizar_frecuencia(senal_original, fs, "Original")
+    f_ruido, mag_ruido = analizar_frecuencia(senal_ruidosa, fs, "Con ruido")
+    
+    axes[0, 1].plot(f_orig, mag_orig, 'b-', label='Original', alpha=0.7)
+    axes[0, 1].plot(f_ruido, mag_ruido, 'r-', label='Con ruido', alpha=0.5)
+    axes[0, 1].set_title('Espectro de frecuencia')
+    axes[0, 1].set_xlabel('Frecuencia (Hz)')
+    axes[0, 1].set_ylabel('Magnitud')
+    axes[0, 1].set_xlim([0, 500])
+    axes[0, 1].legend()
+    axes[0, 1].grid(True)
+    
+    # Respuesta en frecuencia de los filtros
+    for idx, (nombre, filtro) in enumerate(filtros.items()):
+        w, h = signal.freqz(filtro['b'], filtro['a'], fs=fs)
+        
+        axes[0, 2].plot(w, 20 * np.log10(abs(h)), label=nombre)
+    
+    axes[0, 2].set_title('Respuesta en frecuencia de filtros')
+    axes[0, 2].set_xlabel('Frecuencia (Hz)')
+    axes[0, 2].set_ylabel('Magnitud (dB)')
+    axes[0, 2].set_xlim([0, 500])
+    axes[0, 2].legend()
+    axes[0, 2].grid(True)
+    
+    # Señales filtradas en tiempo
+    colores = ['green', 'orange', 'purple']
+    for idx, (nombre, senal_filt) in enumerate(resultados.items()):
+        axes[1, idx].plot(t[:200], senal_filt[:200], color=colores[idx])
+        axes[1, idx].set_title(f'{nombre} - Señal filtrada')
+        axes[1, idx].set_xlabel('Tiempo (s)')
+        axes[1, idx].set_ylabel('Amplitud')
+        axes[1, idx].grid(True)
+    
+    # Espectros de señales filtradas
+    for idx, (nombre, senal_filt) in enumerate(resultados.items()):
+        f_filt, mag_filt = analizar_frecuencia(senal_filt, fs, nombre)
+        
+        axes[2, idx].plot(f_filt, mag_filt, color=colores[idx])
+        axes[2, idx].set_title(f'{nombre} - Espectro')
+        axes[2, idx].set_xlabel('Frecuencia (Hz)')
+        axes[2, idx].set_ylabel('Magnitud')
+        axes[2, idx].set_xlim([0, 500])
+        axes[2, idx].grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+
+# ============================================
+# 7. MÉTRICAS DE EFECTIVIDAD
+# ============================================
+def calcular_metricas(original, ruidosa, filtrada, nombre_filtro):
+    """Calcula métricas para evaluar la efectividad del filtro"""
+    
+    # Relación Señal-Ruido (SNR)
+    def calcular_snr(senal, ruido):
+        potencia_senal = np.mean(senal**2)
+        potencia_ruido = np.mean(ruido**2)
+        return 10 * np.log10(potencia_senal/potencia_ruido)
+    
+    ruido_estimado = filtrada - original
+    snr_mejorada = calcular_snr(original, ruido_estimado)
+    
+    # Error cuadrático medio
+    mse = np.mean((original - filtrada)**2)
+    
+    # Correlación con señal original
+    correlacion = np.corrcoef(original, filtrada)[0, 1]
+    
+    return {
+        'Filtro': nombre_filtro,
+        'SNR (dB)': snr_mejorada,
+        'MSE': mse,
+        'Correlación': correlacion
+    }
+
+# ============================================
+# 8. EJECUCIÓN PRINCIPAL
+# ============================================
+def main():
+    print("=== IMPLEMENTACIÓN Y EVALUACIÓN DE FILTROS DIGITALES ===\n")
+    
+    # Diseñar filtros
+    print("1. Diseñando filtros...")
+    filtros = diseñar_filtros()
+    for nombre, datos in filtros.items():
+        print(f"   - {nombre}: {datos['tipo']}")
+    
+    # Aplicar filtros
+    print("\n2. Aplicando filtros a la señal...")
+    resultados = aplicar_filtros(senal_ruidosa, filtros)
+    
+    # Visualizar resultados
+    print("3. Generando visualizaciones...")
+    visualizar_resultados(t, senal_limpia, senal_ruidosa, resultados, filtros, fs)
+    
+    # Calcular métricas
+    print("\n4. Calculando métricas de efectividad:")
+    print("-" * 60)
+    print(f"{'Filtro':<15} {'SNR (dB)':<12} {'MSE':<12} {'Correlación':<12}")
+    print("-" * 60)
+    
+    for nombre, senal_filt in resultados.items():
+        metricas = calcular_metricas(senal_limpia, senal_ruidosa, senal_filt, nombre)
+        print(f"{metricas['Filtro']:<15} {metricas['SNR (dB)']:<12.2f} "
+              f"{metricas['MSE']:<12.6f} {metricas['Correlación']:<12.4f}")
+    
+    print("\n5. Análisis de resultados:")
+    print("   - Filtro Pasa Bajos: Excelente para eliminar ruido de alta frecuencia")
+    print("   - Filtro Pasa Altos: Útil para eliminar componentes de baja frecuencia")
+    print("   - Filtro Pasa Banda: Ideal para aislar frecuencias específicas")
+
+if __name__ == "__main__":
+    main() 
